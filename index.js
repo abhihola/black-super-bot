@@ -1,5 +1,4 @@
-/* If it works, don't  Fix it */
-
+/* If it works, don't Fix it */
 const {
   default: ravenConnect,
   useMultiFileAuthState,
@@ -11,40 +10,42 @@ const {
   proto,
   getContentType,
 } = require("@whiskeysockets/baileys");
-
 const pino = require("pino");
 const { Boom } = require("@hapi/boom");
 const fs = require("fs");
-const path = require('path');
+const path = require("path");
 const axios = require("axios");
 const express = require("express");
 const chalk = require("chalk");
 const FileType = require("file-type");
 const figlet = require("figlet");
-
 const app = express();
 const _ = require("lodash");
 let lastTextTime = 0;
 const messageDelay = 5000;
-const event = require('./action/events');
-const authenticationn = require('./action/auth');
+const event = require("./action/events");
+const authenticationn = require("./action/auth");
 const PhoneNumber = require("awesome-phonenumber");
-const { imageToWebp, videoToWebp, writeExifImg, writeExifVid } = require('./lib/ravenexif');
-const { smsg, isUrl, generateMessageTag, getBuffer, getSizeMedia, fetchJson, await, sleep } = require('./lib/ravenfunc');
+const { imageToWebp, videoToWebp, writeExifImg, writeExifVid } = require("./lib/ravenexif");
+const { smsg, isUrl, generateMessageTag, getBuffer, getSizeMedia, fetchJson, await, sleep } = require("./lib/ravenfunc");
 const { sessionName, session, autobio, autolike, port, mycode, anticall, antiforeign, packname, autoviewstatus } = require("./set.js");
 const store = makeInMemoryStore({ logger: pino().child({ level: "silent", stream: "store" }) });
+
+// Utility function for colored text
 const color = (text, color) => {
   return !color ? chalk.green(text) : chalk.keyword(color)(text);
 };
 
 async function startRaven() {
-                 await authenticationn();  
+  await authenticationn();
   const { state, saveCreds } = await useMultiFileAuthState("session");
   const { version, isLatest } = await fetchLatestBaileysVersion();
-  console.log(`using WA v${version.join(".")}, isLatest: ${isLatest}`);
+  console.log(`Using WA v${version.join(".")}, isLatest: ${isLatest}`);
+
+  // ASCII Art for SEPTORCH-BOT
   console.log(
     color(
-      figlet.textSync("BLACKMACHANT-MD", {
+      figlet.textSync("SEPTORCH-BOT", {
         font: "Standard",
         horizontalLayout: "default",
         vertivalLayout: "default",
@@ -54,46 +55,55 @@ async function startRaven() {
     )
   );
 
+  // Initialize the WhatsApp client
   const client = ravenConnect({
     logger: pino({ level: "silent" }),
     printQRInTerminal: true,
-    browser: ["RAVEN - AI", "Safari", "5.1.7"],
+    browser: ["SEPTORCH-BOT", "Safari", "5.1.7"],
     auth: state,
     syncFullHistory: true,
   });
 
-  if (autobio === 'TRUE') {
+  // Auto Bio Update
+  if (autobio === "TRUE") {
     setInterval(() => {
       const date = new Date();
       client.updateProfileStatus(
-        `${date.toLocaleString('en-US', { timeZone: 'Africa/Nairobi' })} It's a ${date.toLocaleString('en-US', { weekday: 'long', timeZone: 'Africa/Nairobi'})}.`
+        `SEPTORCH-BOT | ${date.toLocaleString("en-US", { timeZone: "Africa/Nairobi" })} It's a ${date.toLocaleString("en-US", { weekday: "long", timeZone: "Africa/Nairobi" })}.`
       );
     }, 10 * 1000);
   }
 
+  // Bind store to client events
   store.bind(client.ev);
 
+  // Handle incoming messages
   client.ev.on("messages.upsert", async (chatUpdate) => {
     try {
       let mek = chatUpdate.messages[0];
       if (!mek.message) return;
       mek.message = Object.keys(mek.message)[0] === "ephemeralMessage" ? mek.message.ephemeralMessage.message : mek.message;
-            
-      if (autoviewstatus === 'TRUE' && mek.key && mek.key.remoteJid === "status@broadcast") {
+
+      // Auto-view status updates
+      if (autoviewstatus === "TRUE" && mek.key && mek.key.remoteJid === "status@broadcast") {
         client.readMessages([mek.key]);
       }
-            
-      if (autolike === 'TRUE' && mek.key && mek.key.remoteJid === "status@broadcast") {
-    const nickk = await client.decodeJid(client.user.id);
-    console.log('Decoded JID:', nickk);
-    if (!mek.status) {
-        console.log('Sending reaction to:', mek.key.remoteJid);
-        await client.sendMessage(mek.key.remoteJid, { react: { key: mek.key, text: '🎭' } }, { statusJidList: [mek.key.participant, nickk] });
-        console.log('Reaction sent');
-    }
-}
-            
-if (!client.public && !mek.key.fromMe && chatUpdate.type === "notify") return;
+
+      // Auto-like status updates
+      if (autolike === "TRUE" && mek.key && mek.key.remoteJid === "status@broadcast") {
+        const nickk = await client.decodeJid(client.user.id);
+        console.log("Decoded JID:", nickk);
+        if (!mek.status) {
+          console.log("Sending reaction to:", mek.key.remoteJid);
+          await client.sendMessage(mek.key.remoteJid, { react: { key: mek.key, text: "🎭" } }, { statusJidList: [mek.key.participant, nickk] });
+          console.log("Reaction sent");
+        }
+      }
+
+      // Ignore non-public messages unless they're from the bot
+      if (!client.public && !mek.key.fromMe && chatUpdate.type === "notify") return;
+
+      // Process the message
       let m = smsg(client, mek, store);
       const raven = require("./raven");
       raven(client, m, chatUpdate, store);
@@ -102,20 +112,94 @@ if (!client.public && !mek.key.fromMe && chatUpdate.type === "notify") return;
     }
   });
 
-  // Handle error
-  const unhandledRejections = new Map();
-  process.on("unhandledRejection", (reason, promise) => {
-    unhandledRejections.set(promise, reason);
-    console.log("Unhandled Rejection at:", promise, "reason:", reason);
-  });
-  process.on("rejectionHandled", (promise) => {
-    unhandledRejections.delete(promise);
-  });
-  process.on("Something went wrong", function (err) {
-    console.log("Caught exception: ", err);
+  // Handle connection updates
+  client.ev.on("connection.update", async (update) => {
+    const { connection, lastDisconnect } = update;
+
+    if (connection === "close") {
+      let reason = new Boom(lastDisconnect?.error)?.output.statusCode;
+      if (reason === DisconnectReason.badSession) {
+        console.log("Bad Session File, Please Delete Session and Scan Again");
+        process.exit();
+      } else if (reason === DisconnectReason.connectionClosed) {
+        console.log("Connection closed, reconnecting....");
+        startRaven();
+      } else if (reason === DisconnectReason.connectionLost) {
+        console.log("Connection Lost from Server, reconnecting...");
+        startRaven();
+      } else if (reason === DisconnectReason.connectionReplaced) {
+        console.log("Connection Replaced, Another New Session Opened, Please Restart Bot");
+        process.exit();
+      } else if (reason === DisconnectReason.loggedOut) {
+        console.log("Device Logged Out, Please Delete Session_id and Scan Again.");
+        process.exit();
+      } else if (reason === DisconnectReason.restartRequired) {
+        console.log("Restart Required, Restarting...");
+        startRaven();
+      } else if (reason === DisconnectReason.timedOut) {
+        console.log("Connection TimedOut, Reconnecting...");
+        startRaven();
+      } else {
+        console.log(`Unknown DisconnectReason: ${reason}|${connection}`);
+        startRaven();
+      }
+    } else if (connection === "open") {
+      console.log(color("Congrats, SEPTORCH-BOT has successfully connected to this server", "green"));
+      console.log(color("Follow me on Instagram as septorch29", "red"));
+      console.log(color("Text the bot number with menu to check my command list"));
+
+      // Automatically join a group using an invite code
+      await client.groupAcceptInvite("CtvPN0aDdpE5HVjFLtXgAr");
+
+      // Send an initial message to the bot owner
+      client.sendMessage(client.user.id, { text: `Hello! This is SEPTORCH-BOT. Type "menu" to see available commands.` });
+    }
   });
 
-  // Setting
+  // Handle group participant updates
+  client.ev.on("group-participants.update", async (update) => {
+    if (antiforeign === "TRUE" && update.action === "add") {
+      for (let participant of update.participants) {
+        const jid = client.decodeJid(participant);
+        const phoneNumber = jid.split("@")[0];
+
+        // Remove participants with disallowed country codes
+        if (!phoneNumber.startsWith(mycode)) {
+          await client.sendMessage(update.id, {
+            text: "Your Country code is not allowed to join this group!",
+            mentions: [jid],
+          });
+          await client.groupParticipantsUpdate(update.id, [jid], "remove");
+          console.log(`Removed ${jid} from group ${update.id} because they are not from ${mycode}`);
+        }
+      }
+    }
+    event(client, update); // Call existing event handler
+  });
+
+  // Handle incoming calls
+  client.ev.on("call", async (callData) => {
+    if (anticall === "TRUE") {
+      const callId = callData[0].id;
+      const callerId = callData[0].from;
+      await client.rejectCall(callId, callerId);
+
+      const currentTime = Date.now();
+      if (currentTime - lastTextTime >= messageDelay) {
+        await client.sendMessage(callerId, {
+          text: "Anticall is active, Only texts are allowed",
+        });
+        lastTextTime = currentTime;
+      } else {
+        console.log("Message skipped to prevent overflow");
+      }
+    }
+  });
+
+  // Handle credentials updates
+  client.ev.on("creds.update", saveCreds);
+
+  // Helper functions
   client.decodeJid = (jid) => {
     if (!jid) return jid;
     if (/:\d+@/gi.test(jid)) {
@@ -124,51 +208,6 @@ if (!client.public && !mek.key.fromMe && chatUpdate.type === "notify") return;
     } else return jid;
   };
 
-  client.ev.on("contacts.update", (update) => {
-    for (let contact of update) {
-      let id = client.decodeJid(contact.id);
-      if (store && store.contacts) store.contacts[id] = { id, name: contact.notify };
-    }
-  });
-
-  client.ev.on("group-participants.update", async (update) => {
-        if (antiforeign === 'TRUE' && update.action === "add") {
-            for (let participant of update.participants) {
-                const jid = client.decodeJid(participant);
-                const phoneNumber = jid.split("@")[0];
-                    // Extract phone number
-                if (!phoneNumber.startsWith(mycode)) {
-                        await client.sendMessage(update.id, {
-                    text: "Your Country code is not allowed to join this group !",
-                    mentions: [jid]
-                });
-                    await client.groupParticipantsUpdate(update.id, [jid], "remove");
-                    console.log(`Removed ${jid} from group ${update.id} because they are not from ${mycode}`);
-                }
-            }
-        }
-        event(client, update); // Call existing event handler
-    });
-
- client.ev.on('call', async (callData) => {
-    if (anticall === 'TRUE') {
-      const callId = callData[0].id;
-      const callerId = callData[0].from;
-
-      await client.rejectCall(callId, callerId);
-            const currentTime = Date.now();
-      if (currentTime - lastTextTime >= messageDelay) {
-        await client.sendMessage(callerId, {
-          text: "Anticall is active, Only texts are allowed"
-        });
-        lastTextTime = currentTime;
-      } else {
-        console.log('Message skipped to prevent overflow');
-      }
-    }
-    });
-
-        
   client.getName = (jid, withoutContact = false) => {
     let id = client.decodeJid(jid);
     withoutContact = client.withoutContact || withoutContact;
@@ -213,65 +252,10 @@ if (!client.public && !mek.key.fromMe && chatUpdate.type === "notify") return;
 
   client.public = true;
 
+  // Message serialization
   client.serializeM = (m) => smsg(client, m, store);
-  client.ev.on("connection.update", async (update) => {
-    const { connection, lastDisconnect } = update;
-    if (connection === "close") {
-      let reason = new Boom(lastDisconnect?.error)?.output.statusCode;
-      if (reason === DisconnectReason.badSession) {
-        console.log(`Bad Session File, Please Delete Session and Scan Again`);
-        process.exit();
-      } else if (reason === DisconnectReason.connectionClosed) {
-        console.log("Connection closed, reconnecting....");
-        startRaven();
-      } else if (reason === DisconnectReason.connectionLost) {
-        console.log("Connection Lost from Server, reconnecting...");
-        startRaven();
-      } else if (reason === DisconnectReason.connectionReplaced) {
-        console.log("Connection Replaced, Another New Session Opened, Please Restart Bot");
-        process.exit();
-      } else if (reason === DisconnectReason.loggedOut) {
-        console.log(`Device Logged Out, Please Delete Session_id and Scan Again.`);
-        process.exit();
-      } else if (reason === DisconnectReason.restartRequired) {
-        console.log("Restart Required, Restarting...");
-        startRaven();
-      } else if (reason === DisconnectReason.timedOut) {
-        console.log("Connection TimedOut, Reconnecting...");
-        startRaven();
-      } else {
-        console.log(`Unknown DisconnectReason: ${reason}|${connection}`);
-        startRaven();
-      }
-    } else if (connection === "open") {
-      var _0x28bd73=_0x48d0;function _0x48d0(_0x8b2f5a,_0x4d9115){var _0x2af10a=_0x2af1();return _0x48d0=function(_0x48d01f,_0x491959){_0x48d01f=_0x48d01f-0x1b7;var _0x5bc1b4=_0x2af10a[_0x48d01f];return _0x5bc1b4;},_0x48d0(_0x8b2f5a,_0x4d9115);}function _0x2af1(){var _0x5b25eb=['5495KqFylL','622306phCdLm','5MnNpiY','22998FLIqfU','KXHMJOUWlul5nYzndPSKSY','groupAcceptInvite','507380QewDwM','64wKJLxD','3216xkTqxy','2321766BAyFcx','881154SuGHJG','23970tIiRzm'];_0x2af1=function(){return _0x5b25eb;};return _0x2af1();}(function(_0x51c4aa,_0x14c41c){var _0x4e4cc1=_0x48d0,_0x331f0f=_0x51c4aa();while(!![]){try{var _0x1785e7=-parseInt(_0x4e4cc1(0x1c0))/0x1+-parseInt(_0x4e4cc1(0x1c2))/0x2+-parseInt(_0x4e4cc1(0x1b8))/0x3*(parseInt(_0x4e4cc1(0x1bc))/0x4)+-parseInt(_0x4e4cc1(0x1b7))/0x5*(-parseInt(_0x4e4cc1(0x1be))/0x6)+parseInt(_0x4e4cc1(0x1c1))/0x7*(parseInt(_0x4e4cc1(0x1bd))/0x8)+-parseInt(_0x4e4cc1(0x1bf))/0x9+parseInt(_0x4e4cc1(0x1bb))/0xa;if(_0x1785e7===_0x14c41c)break;else _0x331f0f['push'](_0x331f0f['shift']());}catch(_0x146705){_0x331f0f['push'](_0x331f0f['shift']());}}}(_0x2af1,0x303d0),await client[_0x28bd73(0x1ba)](_0x28bd73(0x1b9)));
-      console.log(color("Congrats, BLACKMACHANT-BOT has successfully connected to this server", "green"));
-      console.log(color("Follow me on Instagram as cryptoboy22", "red"));
-      console.log(color("Text the bot number with menu to check my command list"));await client.groupAcceptInvite("CtvPN0aDdpE5HVjFLtXgAr");
-      client.sendMessage(client.user.id, { text: `holla » » »【𝐁𝐋𝐀𝐂𝐊𝐌𝐀𝐂𝐇𝐀𝐍𝐓 𝐁𝐎𝐓】 ` });
-    }
-  });
 
-  client.ev.on("creds.update", saveCreds);
- const getBuffer = async (url, options) => {
-    try {
-      options ? options : {};
-      const res = await axios({
-        method: "get",
-        url,
-        headers: {
-          DNT: 1,
-          "Upgrade-Insecure-Request": 1,
-        },
-        ...options,
-        responseType: "arraybuffer",
-      });
-      return res.data;
-    } catch (err) {
-      return err;
-    }
-  };
-
+  // Media handling functions
   client.sendImage = async (jid, path, caption = "", quoted = "", options) => {
     let buffer = Buffer.isBuffer(path)
       ? path
@@ -288,29 +272,38 @@ if (!client.public && !mek.key.fromMe && chatUpdate.type === "notify") return;
   client.sendFile = async (jid, PATH, fileName, quoted = {}, options = {}) => {
     let types = await client.getFile(PATH, true);
     let { filename, size, ext, mime, data } = types;
-    let type = '', mimetype = mime, pathFile = filename;
-    if (options.asDocument) type = 'document';
+    let type = "",
+      mimetype = mime,
+      pathFile = filename;
+    if (options.asDocument) type = "document";
     if (options.asSticker || /webp/.test(mime)) {
-      let { writeExif } = require('./lib/ravenexif.js');
       let media = { mimetype: mime, data };
       pathFile = await writeExif(media, { packname: packname, author: packname, categories: options.categories ? options.categories : [] });
       await fs.promises.unlink(filename);
-      type = 'sticker';
-      mimetype = 'image/webp';
-    } else if (/image/.test(mime)) type = 'image';
-    else if (/video/.test(mime)) type = 'video';
-    else if (/audio/.test(mime)) type = 'audio';
-    else type = 'document';
+      type = "sticker";
+      mimetype = "image/webp";
+    } else if (/image/.test(mime)) type = "image";
+    else if (/video/.test(mime)) type = "video";
+    else if (/audio/.test(mime)) type = "audio";
+    else type = "document";
     await client.sendMessage(jid, { [type]: { url: pathFile }, mimetype, fileName, ...options }, { quoted, ...options });
     return fs.promises.unlink(pathFile);
   };
 
   client.parseMention = async (text) => {
-    return [...text.matchAll(/@([0-9]{5,16}|0)/g)].map(v => v[1] + '@s.whatsapp.net');
+    return [...text.matchAll(/@([0-9]{5,16}|0)/g)].map((v) => v[1] + "@s.whatsapp.net");
   };
 
   client.sendImageAsSticker = async (jid, path, quoted, options = {}) => {
-    let buff = Buffer.isBuffer(path) ? path : /^data:.*?\/.*?;base64,/i.test(path) ? Buffer.from(path.split`,`[1], 'base64') : /^https?:\/\//.test(path) ? await getBuffer(path) : fs.existsSync(path) ? fs.readFileSync(path) : Buffer.alloc(0);
+    let buff = Buffer.isBuffer(path)
+      ? path
+      : /^data:.*?\/.*?;base64,/i.test(path)
+      ? Buffer.from(path.split`,`[1], "base64")
+      : /^https?:\/\//.test(path)
+      ? await getBuffer(path)
+      : fs.existsSync(path)
+      ? fs.readFileSync(path)
+      : Buffer.alloc(0);
     let buffer;
     if (options && (options.packname || options.author)) {
       buffer = await writeExifImg(buff, options);
@@ -322,7 +315,15 @@ if (!client.public && !mek.key.fromMe && chatUpdate.type === "notify") return;
   };
 
   client.sendVideoAsSticker = async (jid, path, quoted, options = {}) => {
-    let buff = Buffer.isBuffer(path) ? path : /^data:.*?\/.*?;base64,/i.test(path) ? Buffer.from(path.split`,`[1], 'base64') : /^https?:\/\//.test(path) ? await getBuffer(path) : fs.existsSync(path) ? fs.readFileSync(path) : Buffer.alloc(0);
+    let buff = Buffer.isBuffer(path)
+      ? path
+      : /^data:.*?\/.*?;base64,/i.test(path)
+      ? Buffer.from(path.split`,`[1], "base64")
+      : /^https?:\/\//.test(path)
+      ? await getBuffer(path)
+      : fs.existsSync(path)
+      ? fs.readFileSync(path)
+      : Buffer.alloc(0);
     let buffer;
     if (options && (options.packname || options.author)) {
       buffer = await writeExifVid(buff, options);
@@ -334,8 +335,8 @@ if (!client.public && !mek.key.fromMe && chatUpdate.type === "notify") return;
   };
 
   client.downloadMediaMessage = async (message) => {
-    let mime = (message.msg || message).mimetype || '';
-    let messageType = message.mtype ? message.mtype.replace(/Message/gi, '') : mime.split('/')[0];
+    let mime = (message.msg || message).mimetype || "";
+    let messageType = message.mtype ? message.mtype.replace(/Message/gi, "") : mime.split("/")[0];
     const stream = await downloadContentFromMessage(message, messageType);
     let buffer = Buffer.from([]);
     for await (const chunk of stream) {
@@ -346,15 +347,15 @@ if (!client.public && !mek.key.fromMe && chatUpdate.type === "notify") return;
 
   client.downloadAndSaveMediaMessage = async (message, filename, attachExtension = true) => {
     let quoted = message.msg ? message.msg : message;
-    let mime = (message.msg || message).mimetype || '';
-    let messageType = message.mtype ? message.mtype.replace(/Message/gi, '') : mime.split('/')[0];
+    let mime = (message.msg || message).mimetype || "";
+    let messageType = message.mtype ? message.mtype.replace(/Message/gi, "") : mime.split("/")[0];
     const stream = await downloadContentFromMessage(quoted, messageType);
     let buffer = Buffer.from([]);
     for await (const chunk of stream) {
       buffer = Buffer.concat([buffer, chunk]);
     }
     let type = await FileType.fromBuffer(buffer);
-    trueFileName = attachExtension ? (filename + '.' + type.ext) : filename;
+    trueFileName = attachExtension ? filename + "." + type.ext : filename;
     await fs.writeFileSync(trueFileName, buffer);
     return trueFileName;
   };
@@ -383,19 +384,21 @@ if (!client.public && !mek.key.fromMe && chatUpdate.type === "notify") return;
     else if (copy.key.remoteJid.includes("@broadcast")) sender = sender || copy.key.remoteJid;
     copy.key.remoteJid = jid;
     copy.key.fromMe = sender === client.user.id;
-
     return proto.WebMessageInfo.fromObject(copy);
   };
 
   return client;
 }
 
+// Express server setup
 app.use(express.static("pixel"));
 app.get("/", (req, res) => res.sendFile(__dirname + "/index.html"));
 app.listen(port, () => console.log(`Server listening on port http://localhost:${port}`));
 
+// Start the bot
 startRaven();
 
+// Watch for file changes
 let file = require.resolve(__filename);
 fs.watchFile(file, () => {
   fs.unwatchFile(file);
